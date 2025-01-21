@@ -1,3 +1,3 @@
 # YNBY
-Ynby work 
+Ynby Work -
 Data processing projects with streamlit.
