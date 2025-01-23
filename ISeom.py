@@ -43,7 +43,7 @@ def to_excel(df1, df3 ,df2,sheet_name1='物料',sheet_name3='成品',sheet_name2
     # 调用格式设置函数
     set_description_sheet_format(worksheet2, df2)
     set_material_sheet_format(worksheet1, df1)
-    set_material_sheet_format(worksheet3, df3)
+    set_product_sheet_format(worksheet3, df3)
     writer.close()
     processed_data = output.getvalue()
     return processed_data
@@ -66,6 +66,39 @@ def set_material_sheet_format(worksheet, df1):
     # 应用格式到指定列
     column_name = '效期占比'
     column_index = df1.columns.get_loc(column_name) + 1  # +1 是因为 Excel 列索引从 1 开始
+    for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row, min_col=column_index, max_col=column_index):
+        for cell in row:
+            cell.style = percentage_style
+    
+    # 设置标题样式
+    for cell in worksheet[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="346c9c", end_color="346c9c", fill_type="solid")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    
+    # 设置数据居中对齐
+    for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row, min_col=1, max_col=worksheet.max_column):
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+def set_product_sheet_format(worksheet, df3):
+    # 设置列宽
+    for idx, column in enumerate(worksheet.columns, start=1):
+        column_letter = column[0].column_letter
+        if idx == 1:
+            worksheet.column_dimensions[column_letter].width = 12
+        elif idx == 5:
+            worksheet.column_dimensions[column_letter].width = 24
+        else:
+            worksheet.column_dimensions[column_letter].width = 12
+    
+    # 定义百分比格式
+    percentage_style = NamedStyle(name="percentage_style")
+    percentage_style.number_format = '0.00%'
+    
+    # 应用格式到指定列
+    column_name = '效期占比'
+    column_index = df3.columns.get_loc(column_name) + 1  # +1 是因为 Excel 列索引从 1 开始
     for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row, min_col=column_index, max_col=column_index):
         for cell in row:
             cell.style = percentage_style
