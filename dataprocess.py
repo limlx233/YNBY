@@ -25,7 +25,7 @@ def warehouse_filtering(df,wl):
     return  df_wl
 
 def cp_warehouse_filtering(df,cp):
-    df_cp = df[df['仓库'].str.contains('总库|成品库', na=False) & (~df['仓库'].isin(cp))]
+    df_cp = df[df['仓库'].str.contains('总库|研发成品库', na=False) & (~df['仓库'].isin(cp))]
     return df_cp
 
 def expiry_classification(df):
