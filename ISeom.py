@@ -1,3 +1,4 @@
+import re
 import calendar
 import pandas as pd
 from io import BytesIO
@@ -156,6 +157,11 @@ with st.container(border=True):
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     df_lst = list(executor.map(lambda df: df.dropna(subset=["生产日期", "失效日期"], inplace=False)[columns_to_keep], dfs.values()))
                 df_all = pd.concat(df_lst, axis=0)
+                # 定义正则表达式
+                # 定义正则表达式，匹配字母和数字字符
+                pattern = re.compile(r'^([^:]+):')
+                # 使用正则表达式提取仓库代码并创建新列
+                df_all['仓库代码'] = df_all['仓库'].apply(lambda x: pattern.match(x).group(1) if pattern.match(x) else None)
                 # 数据处理--物料
                 wl = st.secrets["warehouses"]["wl"]
                 df_wl1 = dp.warehouse_filtering(df_all,wl) # 筛选仓库
@@ -170,7 +176,8 @@ with st.container(border=True):
                 df_wl1 = dp.reorder_columns(df_wl1, cloumns_to_front)
                 # 数据处理-成品
                 cp = st.secrets["warehouses"]["cp_warehouses"]
-                df_cp1 = dp.cp_warehouse_filtering(df_all,cp)
+                cp_filter = st.secrets["warehouses"]["cp"]
+                df_cp1 = dp.cp_warehouse_filtering(df_all,cp,cp_filter)
                 df_cp1 = dp.calculate_expiry(df_cp1, date_value) # 效期计算
                 df_cp1 = dp.expiry_classification(df_cp1) # 效期分类
                 df_cp1 = dp.receive_classification(df_cp1,date_value) # 领用时间分类

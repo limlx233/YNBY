@@ -21,11 +21,11 @@ def calculate_expiry(df, date_value):
     return df
 
 def warehouse_filtering(df,wl):
-    df_wl = df[df['仓库'].isin(wl)].copy()
+    df_wl = df[df['仓库代码'].isin(wl)].copy()
     return  df_wl
 
-def cp_warehouse_filtering(df,cp):
-    df_cp = df[df['仓库'].str.contains('总库|研发成品库', na=False) & (~df['仓库'].isin(cp))]
+def cp_warehouse_filtering(df,cp,cp_filter):
+    df_cp = df[df['仓库代码'].isin(cp_filter) & (~df['仓库代码'].isin(cp))]
     return df_cp
 
 def expiry_classification(df):
