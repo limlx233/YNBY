@@ -6,8 +6,22 @@ import streamlit as st
 import dataprocess as dp  # 根据实际处理需求 编写的数据处理模块
 import concurrent.futures
 from datetime import date
-from openpyxl.styles import Font, Alignment, PatternFill,NamedStyle
+from openpyxl.styles import Font, Alignment, PatternFill, NamedStyle
+from openpyxl.formatting.rule import DataBarRule, FormulaRule
 
+def add_data_bar_rule(worksheet, start_row, end_row, column, color="c00000"):
+    # 范围字符串
+    range_str = f'{column}{start_row}:{column}{end_row}'
+    # 添加条件格式规则，排除负数
+    negative_rule = FormulaRule(formula=[f'AND({column}{start_row}<0)'], stopIfTrue=True)
+    worksheet.conditional_formatting.add(range_str, negative_rule)
+    # 添加数据条规则
+    data_bar_rule = DataBarRule(
+        start_type='num', start_value=0,
+        end_type='max',
+        color=color
+    )
+    worksheet.conditional_formatting.add(range_str, data_bar_rule)
 
 # 使用缓存来存储处理后的 DataFrame
 @st.cache_data
@@ -30,7 +44,7 @@ def process_data(dfs):
 
 # 将 Pandas DataFrame 对象转换为 Excel 文件格式的字节流
 @st.cache_resource
-def to_excel(df1, df3 ,df2,sheet_name1='物料',sheet_name3='成品',sheet_name2='说明'):
+def to_excel(df1, df3 ,df2,sheet_name1='物料',sheet_name3='成品',sheet_name2='异常类别定义'):
     output = BytesIO()
     writer = pd.ExcelWriter(output, engine='openpyxl')
     df2.to_excel(writer, index=False, header=False,sheet_name=sheet_name2)
@@ -41,46 +55,45 @@ def to_excel(df1, df3 ,df2,sheet_name1='物料',sheet_name3='成品',sheet_name2
     worksheet1 = writer.sheets[sheet_name1]
     worksheet2= writer.sheets[sheet_name2]
     worksheet3= writer.sheets[sheet_name3]
+
+        # 确保百分比样式只被创建一次
+    if "percentage_style" not in workbook.named_styles:
+        percentage_style = NamedStyle(name="percentage_style", number_format='0.00%')
+        workbook.add_named_style(percentage_style)
+    else:
+        percentage_style = workbook.named_styles["percentage_style"]
     # 调用格式设置函数
     set_description_sheet_format(worksheet2, df2)
-    set_material_sheet_format(worksheet1, df1)
-    set_material_sheet_format(worksheet3, df3)
+    set_material_sheet_format(worksheet1, df1, percentage_style)
+    set_material_sheet_format(worksheet3, df3, percentage_style)
+    # 增加数据条
+    add_data_bar_rule(worksheet1,start_row=2, end_row=len(df1) + 1, column='F')
+    add_data_bar_rule(worksheet3,start_row=2, end_row=len(df3) + 1, column='F')
     writer.close()
     processed_data = output.getvalue()
     return processed_data
 
-def set_material_sheet_format(worksheet, df1):
+def set_material_sheet_format(worksheet, df1, percentage_style):
     # 设置列宽
     for idx, column in enumerate(worksheet.columns, start=1):
         column_letter = column[0].column_letter
         if idx == 1:
-            worksheet.column_dimensions[column_letter].width = 12
-        elif idx == 5:
-            worksheet.column_dimensions[column_letter].width = 24
+            worksheet.column_dimensions[column_letter].width = 14
+        elif idx == 6:
+            worksheet.column_dimensions[column_letter].width = 22
+        elif idx == 8:
+            worksheet.column_dimensions[column_letter].width = 30
         else:
-            worksheet.column_dimensions[column_letter].width = 12
-    
-    # 定义百分比格式
-    percentage_style = NamedStyle(name="percentage_style")
-    percentage_style.number_format = '0.00%'
-    
-    # 应用格式到指定列
-    column_name = '效期占比'
+            worksheet.column_dimensions[column_letter].width = 16
+    # 应用百分比格式到指定列
+    column_name = '%(剩余效期/总效期)'
     column_index = df1.columns.get_loc(column_name) + 1  # +1 是因为 Excel 列索引从 1 开始
     for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row, min_col=column_index, max_col=column_index):
         for cell in row:
             cell.style = percentage_style
-    
-    # 设置标题样式
-    # for cell in worksheet[1]:
-    #     cell.font = Font(bold=True, color="FFFFFF")
-    #     cell.fill = PatternFill(start_color="346c9c", end_color="346c9c", fill_type="solid")
-    #     cell.alignment = Alignment(horizontal="center", vertical="center")
-
     # 定义将 RGB 颜色值转换为十六进制颜色代码的函数
     def rgb_to_hex(r, g, b):
         return '{:02x}{:02x}{:02x}'.format(r, g, b)
-
     # 定义不同列所需的颜色
     colors = {
         1: rgb_to_hex(226, 107, 10),
@@ -91,10 +104,8 @@ def set_material_sheet_format(worksheet, df1):
         6: rgb_to_hex(118, 147, 60),
         7: rgb_to_hex(118, 147, 60)
     }
-
     # 默认颜色
     default_color = "346c9c"
-
     # 遍历第一行的每个单元格
     for col_index, cell in enumerate(worksheet[1], start=1):
         # 设置字体为加粗，颜色为白色
@@ -105,49 +116,49 @@ def set_material_sheet_format(worksheet, df1):
         cell.fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
         # 设置单元格内容居中对齐
         cell.alignment = Alignment(horizontal="center", vertical="center")
-    
-    # 设置数据居中对齐
     for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row, min_col=1, max_col=worksheet.max_column):
         for cell in row:
-            cell.alignment = Alignment(horizontal="center", vertical="center")
+            if cell.column == 8 :  # G列是第7列 or cell.column == 14
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+            else:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
 
 
 def set_description_sheet_format(worksheet, df2):
     # 设置列宽
     worksheet.column_dimensions['A'].width = 22
     worksheet.column_dimensions['B'].width = 108
-    
     # 设置行高
     for row in range(1, 12):  # 1~11行行高设置为36
         worksheet.row_dimensions[row].height = 36
-    
     # 设置标题样式
     for cell in worksheet[1]:
         cell.font = Font(bold=True, size=16)
         cell.alignment = Alignment(horizontal="center", vertical="center")
-    
     # 设置剩余行的标题样式
     for row in range(2, worksheet.max_row + 1):  # 从第二行开始
         for cell in worksheet[row]:
             cell.font = Font(size=14, color="000000")
             cell.alignment = Alignment(horizontal="left", vertical="center")
-    
-    # 合并单元格
-    worksheet.merge_cells('A1:B1')  # 合并A1和B1
-    worksheet.merge_cells('A5:A7')  # 合并A5到A7
-    
+    # 合并A1和B1
+    worksheet.merge_cells('A1:B1')
     # 设置合并单元格的对齐方式
     worksheet['A1'].alignment = Alignment(horizontal="center", vertical="center")
-    worksheet['A5'].alignment = Alignment(horizontal="center", vertical="center")
-    
     # 保证样式设置不会被合并操作覆盖
-    for cell in worksheet['A1:B1'][0]:
-        cell.font = Font(bold=True, size=16)
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-
-    for cell in worksheet['A5:A7'][0]:
-        cell.font = Font(size=14, color="000000")
-        cell.alignment = Alignment(horizontal="left", vertical="center")
+    for row in worksheet['A1:B1']:
+        for cell in row:
+            cell.font = Font(bold=True, size=16)
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+    # 设置A2:A8单元格的样式
+    for row in worksheet['A2:A11']:
+        for cell in row:
+            cell.font = Font(size=14, color="000000")
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+    # 设置C2:C8单元格的样式
+    for row in worksheet['C2:C11']:
+        for cell in row:
+            cell.font = Font(size=14, color="000000", bold=True)
+            cell.alignment = Alignment(horizontal="center", vertical="center")
 
 # 页面设置
 st.set_page_config(page_title="数据处理工具", page_icon=":material/home:", layout='centered')
@@ -186,36 +197,35 @@ with st.container(border=True):
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     df_lst = list(executor.map(lambda df: df.dropna(subset=["生产日期", "失效日期"], inplace=False)[columns_to_keep], dfs.values()))
                 df_all = pd.concat(df_lst, axis=0)
-                # 定义正则表达式
                 # 定义正则表达式，匹配字母和数字字符
                 pattern = re.compile(r'^([^:]+):')
                 # 使用正则表达式提取仓库代码并创建新列
                 df_all['仓库代码'] = df_all['仓库'].apply(lambda x: pattern.match(x).group(1) if pattern.match(x) else None)
                 # 数据处理--物料
                 wl = st.secrets["warehouses"]["wl"]
+                cp_wx = st.secrets["warehouses"]["cp_wx"]
                 df_wl1 = dp.warehouse_filtering(df_all,wl) # 筛选仓库
                 df_wl1 = dp.calculate_expiry(df_wl1, date_value) # 效期计算
-                df_wl1 = dp.expiry_classification(df_wl1) # 效期分类
+                df_wl1 = dp.expiry_classification(df_wl1) # 效期类别
                 df_wl1 = dp.receive_classification(df_wl1,date_value) # 领用时间分类
-                df_wl1 = dp.storage_days_classification(df_wl1) # 在库时间分类
-                df_wl1 = df_wl1[~((df_wl1['效期分类'] == '' ) & (df_wl1['领用分类'] == '' ) & (df_wl1['在库天数分类'] == ''))]
+                df_wl1 = dp.storage_days_classification(df_wl1,cp_wx) # 在库时间分类
+                df_wl1 = df_wl1[~((df_wl1['效期类别'] == '' ) & (df_wl1['90天内无领用'] == '' ) & (df_wl1['异常在库天数'] == ''))]
                 df_wl1 = dp.classify_items(df_wl1)
-                # 重新对列排序
-                cloumns_to_front = ['分类','效期','剩余效期','效期占比','所属组织','效期分类','领用分类','在库天数分类']
-                df_wl1 = dp.reorder_columns(df_wl1, cloumns_to_front)
+                df_wl1['处理方案'] =''
+                df_wl1 = dp.sort_and_filter(df_wl1)
                 # 数据处理-成品
                 cp = st.secrets["warehouses"]["cp_warehouses"]
                 cp_filter = st.secrets["warehouses"]["cp"]
                 df_cp1 = dp.cp_warehouse_filtering(df_all,cp,cp_filter)
                 df_cp1 = dp.calculate_expiry(df_cp1, date_value) # 效期计算
-                df_cp1 = dp.expiry_classification(df_cp1) # 效期分类
+                df_cp1 = dp.expiry_classification(df_cp1) # 效期类别
                 df_cp1 = dp.receive_classification(df_cp1,date_value) # 领用时间分类
-                df_cp1 = dp.storage_days_classification(df_cp1) # 在库时间分类
-                df_cp1 = df_cp1[~((df_cp1['效期分类'] == '' ) & (df_cp1['领用分类'] == '' ) & (df_cp1['在库天数分类'] == ''))]
+                df_cp1 = dp.storage_days_classification(df_cp1,cp_wx) # 在库时间分类
+                df_cp1 = df_cp1[~((df_cp1['效期类别'] == '' ) & (df_cp1['90天内无领用'] == '' ) & (df_cp1['异常在库天数'] == ''))]
                 df_cp1 = dp.classify_items(df_cp1)
+                df_cp1['处理方案'] =''
                 # 重新对列排序
-                cloumns_to_front = ['分类','效期','剩余效期','效期占比','所属组织','效期分类','领用分类','在库天数分类']
-                df_cp1 = dp.reorder_columns(df_cp1, cloumns_to_front) 
+                df_cp1 = dp.sort_and_filter(df_cp1)
                 # st.write(df_all.shape)
                 # st.data_editor(df_wl1)
                 # 生成 Excel 文件
