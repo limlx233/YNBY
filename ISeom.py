@@ -72,9 +72,38 @@ def set_material_sheet_format(worksheet, df1):
             cell.style = percentage_style
     
     # 设置标题样式
-    for cell in worksheet[1]:
+    # for cell in worksheet[1]:
+    #     cell.font = Font(bold=True, color="FFFFFF")
+    #     cell.fill = PatternFill(start_color="346c9c", end_color="346c9c", fill_type="solid")
+    #     cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # 定义将 RGB 颜色值转换为十六进制颜色代码的函数
+    def rgb_to_hex(r, g, b):
+        return '{:02x}{:02x}{:02x}'.format(r, g, b)
+
+    # 定义不同列所需的颜色
+    colors = {
+        1: rgb_to_hex(226, 107, 10),
+        2: rgb_to_hex(49, 134, 155),
+        3: rgb_to_hex(226, 107, 10),
+        4: rgb_to_hex(226, 107, 10),
+        5: rgb_to_hex(226, 107, 10),
+        6: rgb_to_hex(118, 147, 60),
+        7: rgb_to_hex(118, 147, 60)
+    }
+
+    # 默认颜色
+    default_color = "346c9c"
+
+    # 遍历第一行的每个单元格
+    for col_index, cell in enumerate(worksheet[1], start=1):
+        # 设置字体为加粗，颜色为白色
         cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill(start_color="346c9c", end_color="346c9c", fill_type="solid")
+        # 根据列索引获取相应的颜色，如果没有指定则使用默认颜色
+        fill_color = colors.get(col_index, default_color)
+        # 设置填充颜色
+        cell.fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
+        # 设置单元格内容居中对齐
         cell.alignment = Alignment(horizontal="center", vertical="center")
     
     # 设置数据居中对齐
