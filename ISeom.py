@@ -81,7 +81,7 @@ def set_material_sheet_format(worksheet, df1, percentage_style):
             worksheet.column_dimensions[column_letter].width = 14
         elif idx == 6:
             worksheet.column_dimensions[column_letter].width = 22
-        elif idx == 8:
+        elif idx == 9:
             worksheet.column_dimensions[column_letter].width = 30
         else:
             worksheet.column_dimensions[column_letter].width = 16
@@ -118,7 +118,7 @@ def set_material_sheet_format(worksheet, df1, percentage_style):
         cell.alignment = Alignment(horizontal="center", vertical="center")
     for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row, min_col=1, max_col=worksheet.max_column):
         for cell in row:
-            if cell.column == 8 :  # G列是第7列 or cell.column == 14
+            if cell.column == 9 :  # G列是第7列 or cell.column == 14
                 cell.alignment = Alignment(horizontal="left", vertical="center")
             else:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -184,12 +184,13 @@ with st.container(border=True):
     # st.write(date_value)
     st.subheader('数据文件上传', divider='grey')
     # 多文件上传
-    uploaded_files = st.file_uploader(label="请选择Excel文件(.xlsx格式)上传", accept_multiple_files=True, type=["xlsx"])
+    uploaded_files = st.file_uploader(label="1.请上传库存数据文件(.xlsx格式)", accept_multiple_files=True, type=["xlsx"])
+    upload_old_file = st.file_uploader(label="2.请上传上月处理结果(.xlsx格式)", accept_multiple_files=False, type=["xlsx"])
     col1, col2 = st.columns(2)
     
     with col1:
         if st.button(label="数据处理", type="primary", key="data_process"):
-            if uploaded_files:
+            if uploaded_files and upload_old_file:
                 # 读取文件并缓存
                 dfs = load_excel_files(uploaded_files)
                 columns_to_keep = st.secrets["warehouses"]["columns_to_keep"]
@@ -213,6 +214,9 @@ with st.container(border=True):
                 df_wl1 = dp.classify_items(df_wl1)
                 df_wl1['处理方案'] =''
                 df_wl1 = dp.sort_and_filter(df_wl1)
+                df_old_wl = pd.read_excel(upload_old_file, sheet_name='物料')
+                # TODO df_wl1 匹配上月处理方案
+                df_wl1 = dp.add_old_solution(df_wl1, df_old_wl)
                 # 数据处理-成品
                 cp = st.secrets["warehouses"]["cp_warehouses"]
                 cp_filter = st.secrets["warehouses"]["cp"]
@@ -226,6 +230,9 @@ with st.container(border=True):
                 df_cp1['处理方案'] =''
                 # 重新对列排序
                 df_cp1 = dp.sort_and_filter(df_cp1)
+                df_old_cp = pd.read_excel(upload_old_file, sheet_name='成品')
+                # TODO df_cp1 匹配上月处理方案
+                df_cp1 = dp.add_old_solution(df_cp1,df_old_cp)
                 # st.write(df_all.shape)
                 # st.data_editor(df_wl1)
                 # 生成 Excel 文件

@@ -135,3 +135,22 @@ def sort_and_filter(df):
     df = df[cols_to_keep]
     df = reorder_columns(df, cols_to_keep)
     return df
+
+def add_old_solution(df_new,df_old):
+    # 步骤 1: 创建查找映射 (物料编码, 批次) -> 处理方案
+    # 将 df2 的 '物料编码' 和 '批次' 设为索引，然后取出 '处理方案' 列
+    mapping_series = df_old.set_index(['物料编码', '批次','仓库代码'])['处理方案']
+    # 步骤 2: 在 df1 中新增 '上月处理方案' 列
+    # 通过将 df1 的复合索引 (物料编码, 批次) 应用于 mapping_series 来实现匹配
+    df_new['上月处理方案'] = df_new.set_index(['物料编码', '批次', '仓库代码']).index.map(mapping_series)
+    # 注意：上面的操作不会改变 df1 原有的索引，因为没有使用 inplace=True
+    # 步骤 3: 将新列移动到第 8 列的位置
+    # 获取当前所有列的列表
+    cols = list(df_new.columns)
+    # 移除新列 '上月处理方案' (它在列表的末尾)
+    cols.pop() 
+    # 将其插入到索引为 7 的位置 (即第 8 列)
+    cols.insert(7, '上月处理方案')
+    # 根据新的列顺序重新排列 df1
+    df_new = df_new[cols]
+    return  df_new
