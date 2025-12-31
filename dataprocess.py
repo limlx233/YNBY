@@ -2,6 +2,10 @@
 import numpy as np
 import pandas as pd
 from datetime import datetime
+import warnings
+# 过滤 openpyxl 的所有 UserWarning 警告
+warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
+
 
 def calculate_expiry(df, date_value):
     df = df.copy()
@@ -136,21 +140,62 @@ def sort_and_filter(df):
     df = reorder_columns(df, cols_to_keep)
     return df
 
-def add_old_solution(df_new,df_old):
-    # 步骤 1: 创建查找映射 (物料编码, 批次) -> 处理方案
-    # 将 df2 的 '物料编码' 和 '批次' 设为索引，然后取出 '处理方案' 列
-    mapping_series = df_old.set_index(['物料编码', '批次','仓库代码'])['处理方案']
-    # 步骤 2: 在 df1 中新增 '上月处理方案' 列
-    # 通过将 df1 的复合索引 (物料编码, 批次) 应用于 mapping_series 来实现匹配
-    df_new['上月处理方案'] = df_new.set_index(['物料编码', '批次', '仓库代码']).index.map(mapping_series)
-    # 注意：上面的操作不会改变 df1 原有的索引，因为没有使用 inplace=True
-    # 步骤 3: 将新列移动到第 8 列的位置
-    # 获取当前所有列的列表
-    cols = list(df_new.columns)
-    # 移除新列 '上月处理方案' (它在列表的末尾)
-    cols.pop() 
-    # 将其插入到索引为 7 的位置 (即第 8 列)
-    cols.insert(7, '上月处理方案')
-    # 根据新的列顺序重新排列 df1
-    df_new = df_new[cols]
-    return  df_new
+def add_old_solution(df_new, df_old):
+    # 步骤 1: 判断 df_old 是否包含 '处理方案' 列
+    if '处理方案' in df_old.columns:
+        # 若存在该列，执行原有匹配逻辑
+        # 创建查找映射 (物料编码, 批次, 仓库代码) -> 处理方案
+        mapping_series = df_old.set_index(['物料编码', '批次', '仓库代码'])['处理方案']
+        # 在 df_new 中新增 '上月处理方案' 列并完成匹配
+        df_new['上月处理方案'] = df_new.set_index(['物料编码', '批次', '仓库代码']).index.map(mapping_series)
+        # 步骤 2: 将新列移动到第 8 列的位置（索引7）
+        cols = list(df_new.columns)
+        # 移除末尾的 '上月处理方案' 列
+        cols.pop()
+        # 插入到索引7的位置（对应第8列）
+        cols.insert(7, '上月处理方案')
+        # 重新排列列顺序
+        df_new = df_new[cols]
+    else:
+        # 若 df_old 不存在 '处理方案' 列，将 df_new 的 '处理方案' 列全部置空
+        # 先判断 df_new 是否已有 '处理方案' 列，避免报错
+        if '处理方案' in df_new.columns:
+            # 置空（可选择空字符串''或None，按需调整）
+            df_new['处理方案'] = ''  # 推荐空字符串，兼容性更强；若需None可改为 df_new['处理方案'] = None
+        else:
+            # 若 df_new 也没有该列，可选择创建并置空（可选，根据你的业务需求决定是否保留此段）
+            df_new['处理方案'] = ''
+    return df_new
+
+
+# 新增半产品在库天数
+def getWipInventoryDays(df_all, date_value):
+    WipInventory = ['XB03', 'XB1', 'B1', 'EP', 'RNB', 'JKRHB']
+    df_WipInventory = df_all[df_all['仓库代码'].isin(WipInventory)].copy()
+    df_WipInventory['生产日期'] = pd.to_datetime(df_WipInventory['生产日期'])
+    date_value = pd.to_datetime(date_value)
+    
+    # 在第二列（loc=1）插入「处理方案」列
+    df_WipInventory.insert(
+        loc=1,
+        column='处理方案',
+        value=None  # 初始值可自定义：''/None/'待处理'等
+    )
+    
+    # 计算在库天数数值
+    inventory_days = (date_value - df_WipInventory['生产日期']).dt.days
+    # 插入到第三列
+    df_WipInventory.insert(
+        loc=2,
+        column='在库天数(月初日期-生产日期)',
+        value=inventory_days
+    )
+    
+    # 按「在库天数」降序排列
+    df_WipInventory.sort_values(
+        by='在库天数(月初日期-生产日期)',
+        ascending=False,
+        inplace=True
+    )
+    
+    return df_WipInventory

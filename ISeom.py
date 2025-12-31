@@ -7,6 +7,7 @@ import dataprocess as dp  # 根据实际处理需求 编写的数据处理模块
 import concurrent.futures
 from datetime import date
 from openpyxl.styles import Font, Alignment, PatternFill, NamedStyle
+from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import DataBarRule, FormulaRule
 
 def add_data_bar_rule(worksheet, start_row, end_row, column, color="c00000"):
@@ -44,12 +45,13 @@ def process_data(dfs):
 
 # 将 Pandas DataFrame 对象转换为 Excel 文件格式的字节流
 @st.cache_resource
-def to_excel(df1, df3 ,df2,sheet_name1='物料',sheet_name3='成品',sheet_name2='异常类别定义'):
+def to_excel(df1, df3 ,df2, df4,sheet_name1='物料',sheet_name3='成品',sheet_name2='异常类别定义', sheet_name4='半成品在库天数'):
     output = BytesIO()
     writer = pd.ExcelWriter(output, engine='openpyxl')
     df2.to_excel(writer, index=False, header=False,sheet_name=sheet_name2)
     df1.to_excel(writer, index=False, sheet_name=sheet_name1)
     df3.to_excel(writer, index=False, sheet_name=sheet_name3)
+    df4.to_excel(writer, index=False, sheet_name=sheet_name4)
     # 获取工作簿和工作表
     workbook = writer.book
     worksheet1 = writer.sheets[sheet_name1]
@@ -69,6 +71,62 @@ def to_excel(df1, df3 ,df2,sheet_name1='物料',sheet_name3='成品',sheet_name2
     # 增加数据条
     add_data_bar_rule(worksheet1,start_row=2, end_row=len(df1) + 1, column='F')
     add_data_bar_rule(worksheet3,start_row=2, end_row=len(df3) + 1, column='F')
+
+    worksheet4 = writer.sheets[sheet_name4]
+    # ========== 半产品在库天数的Excel Sheet 格式设置 ==========
+    # 设置 B~E 列列宽为 40
+    for col_idx in range(2, 6):  # 2,3,4,5 对应 B,C,D,E 列
+        col_letter = get_column_letter(col_idx)  # 将索引转为Excel列字母（如 2->B）
+        worksheet4.column_dimensions[col_letter].width = 28
+    # C列居中显示
+    c_col_center_alignment = Alignment(
+        horizontal="center",  # 水平居中
+        vertical="center"    # 垂直居中
+    )
+    # 定位C列（索引3），转换为列字母
+    c_col_idx = 3
+    c_col_letter = get_column_letter(c_col_idx)
+    # 应用到C列所有有数据的单元格（包含表头和数据行）
+    # 遍历C列所有行（从第1行表头到最后一行数据）
+    for row_idx in range(1, worksheet4.max_row + 1):
+        cell = worksheet4[f"{c_col_letter}{row_idx}"]
+        cell.alignment = c_col_center_alignment
+    # 创建并应用日期格式
+    date_style = NamedStyle(name="date_style")
+    date_style.number_format = "yyyy-mm-dd"  # 日期格式
+    date_style.alignment = Alignment(horizontal="center")  # 居中对齐
+    # 获取生产日期、失效日期列索引（openpyxl 列索引从1开始，需+1）
+    header_names = df4.columns.tolist()
+    produce_date_col = header_names.index("生产日期") + 1  # 关键：+1 适配 openpyxl 索引
+    expire_date_col = header_names.index("失效日期") + 1
+    # 应用日期格式到整列
+    for col_idx in [produce_date_col, expire_date_col]:
+        col_letter = get_column_letter(col_idx)
+        # 循环应用到该列所有有数据的单元格（可按需调整行数范围）
+        for row_idx in range(2, worksheet4.max_row + 1):  # 第2行开始（跳过表头）
+            cell = worksheet4[f"{col_letter}{row_idx}"]
+            cell.style = date_style
+
+
+    # 设置首行表头格式（蓝色填充 + 白色加粗，第2/7列浅黄色填充）
+    # 定义表头样式
+    header_fill = PatternFill(start_color="346c9c", end_color="346c9c", fill_type="solid")  # 蓝色填充
+    # 浅蓝色填充样式（首行第2、8列专用）
+    header_yellow_fill = PatternFill(start_color="31869b", end_color="31869b", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)  # 白色加粗字体
+    header_alignment = Alignment(horizontal="center", vertical="center")  # 居中对齐
+
+    # 应用到首行（第1行，openpyxl 行索引从1开始）
+    for col_idx in range(1, len(header_names) + 1):
+        cell = worksheet4.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.alignment = header_alignment
+        # 关键修改：条件判断应用对应填充色
+        if col_idx == 2 or col_idx == 8:
+            cell.fill = header_yellow_fill
+        else:
+            cell.fill = header_fill
+    
     writer.close()
     processed_data = output.getvalue()
     return processed_data
@@ -235,9 +293,26 @@ with st.container(border=True):
                 df_cp1 = dp.add_old_solution(df_cp1,df_old_cp)
                 # st.write(df_all.shape)
                 # st.data_editor(df_wl1)
+
+                # 数据处理-半产品
+                df4 = dp.getWipInventoryDays(df_all, date_value)
+                df_inventory = pd.ExcelFile(upload_old_file)
+                all_sheet_names = df_inventory.sheet_names  # 获取所有sheet名称列表
+                #  定义目标工作表名称
+                target_sheet = "半成品"
+                # 分情况读取或创建空DataFrame
+                if target_sheet in all_sheet_names:
+                    df_old_wip = pd.read_excel(upload_old_file, sheet_name=target_sheet)
+                else:
+                    # 情况2：不存在目标工作表，创建空DataFrame
+                    # 方案A：创建与df_cp1列结构一致的空DataFrame（推荐，避免后续匹配报错）
+                    df_old_wip = df4.iloc[0:0].copy()  # 取df_cp1的列名，行数为0，保留列结构
+                    
+                df4 = dp.add_old_solution(df4, df_old_wip)
+
                 # 生成 Excel 文件
                 df2 = dp.generate_description_df()
-                excel_file = to_excel(df_wl1,df_cp1,df2)
+                excel_file = to_excel(df_wl1,df_cp1,df2,df4)
                 st.session_state.excel_file = excel_file
             else:
                 st.info("请先上传数据文件!")
